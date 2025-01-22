@@ -1,160 +1,156 @@
 # Evo Design Document
 
-Below is a high-level overview of Evo's goals and design choices, intended to help new contributors understand the project and see how everything fits together.
+## Overview & Motivation
 
-Evo is an offline-first, tree-based version control system (VCS) that aims to improve on traditional workflows by providing:
-
-1. User-friendly commands (no steep learning curve)
-2. Ephemeral workspaces instead of complicated branch pointers
-3. Advanced merges, including structural merges for JSON/YAML
-4. A built-in HTTP server for push/pull
-5. Optional commit signing and verification with Ed25519
-6. Large file support (LFS-like mechanism)
-7. Fine-grained concurrency with subdirectory/file-level locks
-8. Focus on clarity and simplicity over opaque complexities
-
-The system is implemented in Go, with an easily maintainable, extensible architecture.
+Evo is a next-generation version control system designed to solve problems that legacy systems (like Git) struggle with—especially around complex merges, large file handling, and rename tracking. By leveraging CRDTs (Conflict-Free Replicated Data Types), Evo can integrate changes from multiple developers without forcing manual merges or conflicts, all while supporting a familiar commit/branch-like workflow.
 
 ## Key Goals
 
-### 1. Simplicity & Approachability
-- Minimize mental overhead: commands like `init`, `commit`, `sync`, `revert`, `workspace merge` should cover 90%+ of day-to-day tasks
-- Provide straightforward conflict resolution steps and structural merges for common file types
+1. **Branch-Free, Named Streams**
+   - Instead of Git branches, Evo uses named streams to isolate sets of changes
+   - Merging is a matter of replicating CRDT operations from one stream to another
 
-### 2. Offline-First Distribution
-- Every developer has a complete local repository, including all commits and file data
-- The network is only required for syncing changes to a remote server, so one can commit, revert, and merge entirely offline
+2. **CRDT-Powered Concurrency**
+   - No more "merge conflicts"
+   - Evo's line-based RGA (Replicated Growable Array) CRDT automatically merges line insertions, updates, and deletions even when multiple developers modify the same file concurrently
 
-### 3. Production-Grade Reliability
-- DAG-based commits with cryptographic hashes ensure integrity
-- Fine-grained locking for concurrency support
-- Real revert logic that inverts actual file diffs
-- Built-in server for push/pull, user auth, and hosting
+3. **Stable File IDs for Renames**
+   - Renames no longer break history
+   - Evo maintains a `.evo/index` that assigns each file a stable, UUID-based ID so renaming a file doesn't lose references to its log
 
-### 4. Enterprise & Open-Source Friendly
-- Secure commit signing & verification
-- Large file support
-- Extensible design: easy to add new merge strategies, custom authentication backends, or specialized deployment configurations
+4. **Large File Support**
+   - Files exceeding a configurable threshold are stored in `.evo/largefiles/<fileID>` with only a stub line in the CRDT logs
+   - This prevents huge content from bloating the text-based logs
 
-## Core Design Choices
+5. **Full Revert & Partial Merges**
+   - Every commit tracks the old content on updates, allowing truly comprehensive revert
+   - Partial merges (or "cherry-picks") replicate only a single commit's changes from one stream to another, as opposed to pulling everything
 
-### 1. Custom .evo/ Format
+6. **Optional Commit Signing**
+   - Evo supports Ed25519-based signatures for verifying authenticity
+   - Commits store a signature field to guard against tampering
 
-Unlike Git's .git/, Evo maintains its own repository structure:
+## Architecture
 
-- **objects/**
-  - Stores commits (`<commit-hash>.json`), tree objects (`<tree-hash>.json`), and binary blobs (`blobs/<blob-hash>`)
-- **refs/**
-  - Contains reference files (like `refs/origin`, `refs/main`) if you choose to keep named references
-- **workspaces/**
-  - Holds ephemeral workspace references (`workspaces/<workspace-name>`)
-- **staging/**
-  - Tracks partial staging information if a user commits with `--partial`
-- **keys/**
-  - Stores encryption-protected private keys and public keys for signing
-- **config/**
-  - Houses user settings (like `user.json` for name/email), remote URLs, or other repository-level config
+Below is a high-level view of Evo's architecture and rationale:
 
-### 2. Tree-Based Commits
+### 1. Named Streams
+- Each stream is effectively a separate CRDT operation log stored in `.evo/ops/<stream>`
+- Users can create or switch streams (akin to branches)
+- Merging means copying missing commits (and their CRDT operations) from one stream's logs to another
 
-Each commit references a tree object, which is effectively a snapshot of every file path mapped to a blob hash. This design:
-- Makes it straightforward to see which files changed between commits by comparing trees
-- Allows partial staging, revert operations, and merges at a file or even sub-file level if we store structural diffs
+**Design Decision:** This approach provides a branch-like user experience but avoids the complexity of Git merges and HEAD pointers. CRDT ensures no merge conflicts.
 
-### 3. Renaming "HEAD"
+### 2. RGA-Based CRDT
+- We employ an RGA (Replicated Growable Array) for each file, which can handle line insertion, deletion, and reordering
+- The RGA logic is stored in `.evo/ops/<stream>/<fileID>.bin` in a custom binary format (no JSON overhead)
+- Each operation has `(lamport, nodeID)` for concurrency ordering, plus a `lineID` for each line
 
-To differentiate from Git's "HEAD," Evo uses `ACTIVE` as the name of the current commit reference. This is purely cosmetic but emphasizes that we're building something distinct from Git.
+**Design Decision:**
+- RGA allows lines to be re-inserted anywhere, supporting reordering or partial merges with minimal overhead
+- Using a binary format speeds up parsing and reduces disk usage
 
-### 4. Ephemeral Workspaces
+### 3. Stable File IDs
+- `.evo/index` maps `filePath -> fileID`. If a user renames a file, we only update the index; the CRDT logs still reference the same fileID
+- This ensures rename history is never lost, unlike older VCS tools that rely on heuristics to guess renames
 
-Instead of long-lived branches with numerous merges, Evo uses ephemeral "workspaces":
-- Users create a workspace (`evo workspace create feature-xyz`) which references the current `ACTIVE` commit
-- They switch to the workspace to do local commits
-- They eventually merge the workspace back into `ACTIVE` (or another workspace)
-- After merging, the workspace reference can be cleared
+### 4. Commits & Reverts
+- A commit is a snapshot of newly added operations since the previous commit, stored in `.evo/commits/<stream>/<commitID>.bin`
+- For update operations, we store the `oldContent` so revert can truly restore lines to what they were
+- Revert automatically generates inverse operations (e.g., an insert becomes a delete) and re-applies them to the CRDT logs
 
-This approach encourages short-lived feature spaces, reduces confusion about merging older, stale branches, and fosters simpler merges.
+**Design Decision:**
+- By storing old content in commits, we can revert precisely, even for partial updates or line changes, avoiding the simplistic "delete everything" approach
 
-### 5. Advanced Merge & Conflict Resolution
+### 5. Large File Handling
+- If a file's size exceeds a configurable threshold (`files.largeThreshold`), Evo writes a CRDT stub line `EVO-LFS:<fileID>` and places the real file content into `.evo/largefiles/<fileID>/`
+- This keeps the CRDT logs small and is reminiscent of Git-LFS, but simpler and built-in
 
-We provide a structural merge engine for JSON/YAML file types, plus a line-based fallback for everything else. N-way merges are supported by iteratively merging each parent's tree. Future expansions (e.g., merging XML or domain-specific file types) are straightforward to add via plugins in `internal/plugins`.
+### 6. Partial Merges & Cherry-Pick
+- `evo stream merge <src> <target>` merges all missing commits from `<src>` to `<target>`
+- `evo stream cherry-pick <commitID> <target>` merges only that single commit
+- Because each commit references discrete CRDT operations by file ID, partial merges replicate exactly the needed ops
 
-### 6. Commit Signing & Verification
+### 7. Optional Ed25519 Signing
+- Users can configure a signing key path (`signing.keyPath` in config)
+- On commit, Evo can create a signature by hashing the commit's stable representation (metadata + ops) and sign it
+- If `verifySignatures = true`, the CLI warns if the signature fails verification
 
-Commits can be optionally signed with an Ed25519 private key. Evo can store passphrase-protected private keys in `.evo/keys/`. On `evo log`, you'll see if each commit is "verified" or not. This ensures authenticity and integrity in large or distributed teams.
+**Design Decision:**
+- This approach is offline-first: no server needed
+- The user's private key is local, and signatures are purely a cryptographic measure for authenticity
 
-### 7. Large File Support
+## CLI Summary
 
-Files exceeding a threshold (e.g., 5MB) can be moved into `.evo/largefiles` automatically, leaving a small "stub" behind in the working directory. This keeps repository sizes more manageable.
+1. **Initialize Repository**
+   ```bash
+   evo init [dir]
+   ```
+   - Creates `.evo/` structure, "main" stream, config, etc.
 
-### 8. Fine-Grained Concurrency
+2. **Configuration**
+   ```bash
+   evo config [get|set] ...
+   ```
+   - Manage global/repo-level settings (`user.name`, `user.email`, `remote origin`, etc.)
 
-We use a combination of in-memory locks (Go `sync.Mutex`) keyed by subdirectory or resource, ensuring multiple Evo commands or server requests can run without corrupting references. In the future, these can be replaced or augmented by file-based locking if needed.
+3. **Status**
+   ```bash
+   evo status
+   ```
+   - Shows changed files, new files, renames, etc.
+   - Lists current stream and pending operations
 
-### 9. Built-In HTTP Server
+4. **Commit**
+   ```bash
+   evo commit -m <msg> [--sign]
+   ```
+   - Groups newly added ops into a commit with a user-provided message, optional signing
 
-Running `evo server` launches an HTTP service for:
-- Pull (`GET /pull`) to list known commits
-- Push (`POST /push`) to upload missing commit objects
-- Get Objects (`GET /objects/<hash>`) to fetch specific commit or tree data
+5. **Revert**
+   ```bash
+   evo revert <commit-id>
+   ```
+   - Generates inverse ops to restore lines from a prior commit
 
-This allows you to self-host Evo on any system. The server also includes stubbed endpoints (`/auth/login`, `/auth/register`) for user authentication, which can be expanded to meet enterprise needs (OAuth, LDAP, etc.).
+6. **Log**
+   ```bash
+   evo log
+   ```
+   - Lists commits in the current stream, optionally verifying signatures
 
-### 10. Friendly CLI
+7. **Stream**
+   ```bash
+   evo stream <create|switch|list|merge|cherry-pick>
+   ```
+   - Manages named streams (branch-like workflows)
 
-Commands revolve around the core tasks:
-```bash
-evo init      # Initialize a new Evo repo
-evo status    # List added, modified, deleted, or renamed files
-evo commit    # Capture changes in a new commit. --sign to sign, --partial for staged-only
-evo revert    # Invert a specific commit's changes
-evo workspace # Manage ephemeral workspaces (create, switch, merge, list)
-evo sync      # Pull from remote, handle merges if needed, then push local commits
-evo log       # Show commit history in descending time order (with optional signature verification)
-evo server    # Start an Evo server instance for push/pull hosting
-```
+8. **Sync**
+   ```bash
+   evo sync <remote> (not fully implemented)
+   ```
+   - Stub for pushing/pulling CRDT logs from a future Evo server
 
-## How to Contribute
+## Config & Auth
 
-### 1. Fork or Clone the Repo
-- Standard GitHub flow if the project is hosted on GH. Or get Evo from the official source.
+- Global config at `~/.config/evo/config.toml`
+- Repo config at `.evo/config/config.toml`
+- Example keys:
+  - `user.name`, `user.email`
+  - `files.largeThreshold`
+  - `verifySignatures` (true/false)
+  - `signing.keyPath` (path to Ed25519 private key)
 
-### 2. Set Up Your Environment
-- You'll need Go 1.20+ installed
-- Run `go build ./cmd/evo` to produce the evo binary
+## Why Evo is Different
 
-### 3. Branch/Workspace for Features
-- Use `evo workspace create <feature>` to start new features, or rely on normal Git branching if you're just storing code in a Git repo for now
+- **No Merge Conflicts:** CRDT concurrency means each line insertion, update, or deletion merges automatically
+- **Renames Are Trivial:** The stable file ID approach eliminates guesswork
+- **Partial Merges:** Cherry-pick or revert lines in a simpler manner thanks to the operation-based CRDT approach
+- **Offline-First:** No central server required; commits and merges work locally with minimal overhead
+- **Extensible:** We can add "pull requests," "server-based merges," or advanced partial file merges without rewriting the entire engine
 
-### 4. Coding Conventions
-- The codebase is broken into `internal/core`, `internal/server`, `internal/commands`, etc.
-- Keep your changes modular: if you're adding a new type of merge plugin, place it in `internal/plugins/`
-- If you're altering the CLI, look in `internal/commands/`
-- For concurrency or data structures, check `internal/core/`
+## Conclusion
 
-### 5. Add Tests
-- We encourage adding tests in a `tests/` or alongside relevant packages
-- For merges, revert logic, or large files, test real-world scenarios and corner cases
+Evo aims to simplify version control while enhancing concurrency and rename support. It merges automatically using a robust line-based CRDT, organizes changes into named streams instead of ephemeral branches, and offers optional commit signing plus large file offloading.
 
-### 6. Open a Pull Request (if using GitHub or a similar platform)
-- Provide a brief description of your changes, referencing any open issues or planned features
-- We'll review and discuss as needed
-
-## Future Roadmap
-
-- **More Detailed Renames**: The current rename detection is naive. We plan to implement more robust logic (like comparing file similarity thresholds) to track renames accurately
-- **Improved Conflict UI**: An interactive conflict-resolution mode for merges, guiding the user through each file's conflict
-- **Tree Compression / Packfiles**: Similar to Git's packfiles, for more efficient storage in huge repos
-- **Extended Server Features**: Full user auth management, code reviews, integrated CI triggers, etc.
-- **GUI Clients**: Although Evo is CLI-first, we welcome community-driven GUIs
-
-## Summary
-
-Evo aims to reinvent the developer experience of version control by focusing on clarity, simpler branching (workspaces), advanced merges, and robust offline support. Thanks to Go's concurrency features, built-in cryptographic libraries, and static binary distribution, it can serve small teams or large enterprises with minimal overhead.
-
-We look forward to your contributions—whether that's adding new merge strategies, refining the commit process, or extending the server's capabilities. Welcome to Evo!
-
-## Questions or Ideas?
-
-- Please open an issue or discussion in the Evo repository
-- Or jump into the code, add your feature, and open a PR
+The result is a production-ready, innovative VCS that supports both small personal projects and large enterprise codebases—offline or with a future server for collaboration. Evo's design choices reflect the vision of replacing traditional DVCS with something more powerful, more flexible, and less conflict-prone.

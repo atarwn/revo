@@ -1,99 +1,94 @@
-# Evo: The Evolution of Version Control
+# Evo 🌿
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/crazywolf132/evo)](https://goreportcard.com/report/github.com/crazywolf132/evo)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/crazywolf132/evo)](https://golang.org/)
+> **Note**: This is my hobby project in active development! While the core concepts are working, some features are still experimental and under construction. If you like the vision, contributions and feedback are very welcome! 🚧
 
-> Version control that works the way you think
+Next-Generation, CRDT-Based Version Control
+No Merge Conflicts • Named Streams • Stable File IDs • Large File Support
 
-## Why Evo?
+Evo 🌿 aims to evolve version control by abandoning outdated branch merges and conflict resolutions. Instead, it leverages CRDT (Conflict-Free Replicated Data Type) magic so that changes from multiple users automatically converge—no fighting with merges or losing work when files are renamed!
 
-Ever felt that version control should be simpler? That branching shouldn't require a PhD in Git? That merging shouldn't feel like defusing a bomb? We did too. That's why we built Evo.
+## Why Evo? 🌿
 
-Evo is a modern, offline-first version control system that focuses on what matters most: helping developers write great code together. No more merge conflicts that make you want to quit programming. No more branch structures that look like abstract art. Just clean, intuitive version control that works.
+1. **Zero Merge Conflicts**
+   The line-based RGA CRDT merges text changes from different developers seamlessly.
+2. **Named Streams Instead of Branches**
+   Create and switch streams for new features, merge or cherry-pick commits from one stream to another—no more complicated branching.
+3. **Renames Made Simple**
+   Files get stable UUIDs in .evo/index so that renames never lose history.
+4. **Large File Support**
+   Automatic detection moves big files to .evo/largefiles/ and stores only a stub in the CRDT logs.
+5. **Offline-First**
+   Commit, revert, or switch streams locally with no server required.
+6. **Commit Signing**
+   Optional Ed25519 signing for users who need authenticity checks.
 
-## ✨ Features That Make a Difference
+## Work in Progress 🌿
 
-### 🌿 Workspaces, Not Branches
+While Evo's core is functional, there's active development on:
+- Advanced partial merges for even more granular change selection
+- Extended tests (unit/integration/E2E)
+- Server-based PR flows for code reviews
+- Performance (packfiles, caching)
+- CLI & UI polish
+
+Your feedback and contributions can help shape Evo's future!
+
+## Vision 🌿
+
+The goal is to make version control feel effortless: merges happen automatically, renames never break history, large files don't slow you down, and everything works offline. The future roadmap includes a fully realized server for pull requests, enterprise auth, and real-time collaboration—all powered by CRDT behind the scenes.
+
+## Installing Evo 🛠️
+
+> **Note**: As this is a hobby project, some features might not work as described. Feel free to experiment and contribute improvements!
+
+1. Clone & Build:
 ```bash
-evo workspace create feature-auth
-# Make your changes, commit, and when ready...
-evo workspace merge
+git clone https://github.com/crazywolf132/evo.git
+cd evo
+go mod tidy
+go build -o evo ./cmd/evo
 ```
-Forget long-lived branches. Workspaces are ephemeral development environments that encourage clean, focused work. Create one for each feature, merge it when you're done, and move on. Simple.
 
-### 🤝 Smart Merges That Actually Work
-- **Structural merging** for JSON and YAML files
-- **Intelligent conflict resolution** that understands your code
-- **N-way merges** when you need them
-- No more "Accept Current" or "Accept Incoming" blind choices
+2. (Optional) Install:
+```bash
+go install ./cmd/evo
+```
 
-### 🔒 Built for Teams
-- **Offline-first**: Work anywhere, sync when ready
-- **Fine-grained concurrency**: Multiple team members can work on different parts of the codebase simultaneously
-- **Built-in auth**: Simple user management with extensible authentication
-- **Optional commit signing**: Verify who wrote what with Ed25519
-
-### 📦 Enterprise Ready
-- **Large file support** built-in
-- **Structural merges** for configuration files
-- **Fine-grained permissions**
-- **Self-hosted option** with built-in HTTP server
-
-## 🚀 Quick Start
+## Quick Start 🚀
 
 ```bash
-# Install Evo
-go install github.com/crazywolf132/evo/cmd/evo@latest
-
-# Initialize a new repository
+# Initialize a new Evo repo
 evo init
 
-# Create a workspace for your feature
-evo workspace create my-feature
+# Check for changed or renamed files
+evo status
 
-# Stage and commit your changes
-evo commit -m "Add awesome feature"
+# Commit changes (optionally sign)
+evo commit -m "Initial commit"
 
-# Merge your changes when ready
-evo workspace merge
+# Create a new stream (like a branch)
+evo stream create feature-x
+evo stream switch feature-x
 
-# Push to a remote server
-evo sync
+# Make changes -> evo status -> evo commit ...
+# Merge everything back into main when ready
+evo stream merge feature-x main
 ```
 
-## 🎯 Core Philosophy
+## Contributing 💪
 
-Evo was built on three core principles:
+Your help in making Evo better would be amazing! Check out [DESIGN.md](DESIGN.md) for insights on architecture and upcoming tasks. Whether it's code, ideas, or bug reports - all contributions are welcome!
 
-1. **Simplicity is power**: Complex features should have simple interfaces
-2. **Work flows like thought**: Version control should match your mental model
-3. **Trust through verification**: Every commit can be traced and verified
+Feel free to:
+- Open issues for bugs or feature requests
+- Submit pull requests for improvements
+- Share your thoughts and experiences
+- Star the project if you like the vision!
 
-## 🛠 Built with Modern Tech
+## License 📜
 
-- **Go**: For reliability, performance, and ease of deployment
-- **Ed25519**: For secure commit signing
-- **HTTP/2**: For efficient client-server communication
-- **Structural Parsing**: For intelligent merges
-
-## 📚 Documentation
-
-- [Getting Started Guide](./docs/getting-started.md)
-- [Command Reference](./docs/commands.md)
-- [Design Document](./DESIGN.md)
-- [Contributing Guide](./CONTRIBUTING.md)
-
-## 🤝 Contributing
-
-We believe great tools come from great communities. Whether you're fixing bugs, improving documentation, or adding new features, we'd love your help! See our [Contributing Guide](./CONTRIBUTING.md) to get started.
-
-## 📜 License
-
-Evo is open source software licensed under the MIT license. See the [LICENSE](./LICENSE) file for more details.
+Evo 🌿 is released under the MIT License. Hope you find it as fun and liberating to use as it is to build!
 
 ---
 
-Built with ❤️ by developers, for developers.
-
-Looking to migrate from another VCS? Check out our [migration guides](./docs/migrations/).
+Thanks for checking out Evo 🌿! I'm excited to see this project grow into a conflict-free, rename-friendly, large-file-ready version control system. Remember, it's a work in progress, so expect some rough edges - but with your help, it can become amazing! ✨

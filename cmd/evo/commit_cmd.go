@@ -1,46 +1,60 @@
 package main
 
 import (
-	"evo/internal/commands"
+	"evo/internal/commits"
+	"evo/internal/config"
+	"evo/internal/index"
+	"evo/internal/repo"
+	"evo/internal/streams"
+	"fmt"
 
 	"github.com/spf13/cobra"
 )
 
 var (
-	commitMessage string
-	commitSign    bool
-	commitPartial bool
+	commitMsg  string
+	commitSign bool
 )
 
 func init() {
 	var commitCmd = &cobra.Command{
 		Use:   "commit",
-		Short: "Create a new commit",
-		Long: `Record changes in the local repository.
-        You can specify a commit message, sign the commit, or do a partial commit.
-
-        If you use --partial, you need to have staged files via 'evo stage <files>'.
-        Only those staged files will be committed.`,
-		Run: func(cmd *cobra.Command, args []string) {
-			// Build up the arguments as if we used the old flags
-			var forwarded []string
-			if commitMessage != "" {
-				forwarded = append(forwarded, "-m", commitMessage)
+		Short: "Group new CRDT ops into a commit, optionally signed",
+		Long: `Collect newly added CRDT ops (including old content for updates) into a single commit
+with a message and optional Ed25519 signature, if configured.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if commitMsg == "" {
+				return fmt.Errorf("use -m to specify a commit message")
 			}
-			if commitSign {
-				forwarded = append(forwarded, "--sign")
+			rp, err := repo.FindRepoRoot(".")
+			if err != nil {
+				return err
 			}
-			if commitPartial {
-				forwarded = append(forwarded, "--partial")
+			stream, err := streams.CurrentStream(rp)
+			if err != nil {
+				return err
 			}
-			commands.RunCommit(forwarded)
+			// update index
+			if err := index.UpdateIndex(rp); err != nil {
+				return err
+			}
+			name, _ := config.GetConfigValue(rp, "user.name")
+			email, _ := config.GetConfigValue(rp, "user.email")
+			if name == "" {
+				name = "EvoUser"
+			}
+			if email == "" {
+				email = "user@evo"
+			}
+			cid, err := commits.CreateCommit(rp, stream, commitMsg, name, email, commitSign)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Created commit %s in stream %s\n", cid.ID, stream)
+			return nil
 		},
 	}
-
-	// define flags on commitCmd
-	commitCmd.Flags().StringVarP(&commitMessage, "message", "m", "", "Commit message")
-	commitCmd.Flags().BoolVar(&commitSign, "sign", false, "Sign the commit with a local keypair")
-	commitCmd.Flags().BoolVar(&commitPartial, "partial", false, "Only commit changes since the last commit")
-
+	commitCmd.Flags().StringVarP(&commitMsg, "message", "m", "", "Commit message")
+	commitCmd.Flags().BoolVar(&commitSign, "sign", false, "Sign commit using Ed25519 if configured")
 	rootCmd.AddCommand(commitCmd)
 }

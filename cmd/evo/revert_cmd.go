@@ -1,24 +1,39 @@
 package main
 
 import (
-	"evo/internal/commands"
+	"evo/internal/commits"
+	"evo/internal/repo"
+	"evo/internal/streams"
 	"fmt"
 
 	"github.com/spf13/cobra"
 )
 
 func init() {
-    var revertCmd = &cobra.Command{
-        Use:   "revert <commit-hash>",
-        Short: "Revert a specific commit by inverting its diffs",
-        Long:  `Reverts the changes introduced by the specified commit. Creates a new commit with the inverted changes.`,
-        Run: func(cmd *cobra.Command, args []string) {
-            if len(args) < 1 {
-                fmt.Println("Usage: evo revert <commit-hash>")
-                return
-            }
-            commands.RunRevert(args)
-        },
-    }
-    rootCmd.AddCommand(revertCmd)
+	var revertCmd = &cobra.Command{
+		Use:   "revert <commit-id>",
+		Short: "Revert the specified commit by generating inverse ops",
+		Long:  `This properly restores old lines if the commit performed updates, removing inserted lines, etc.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) < 1 {
+				return fmt.Errorf("usage: evo revert <commit-id>")
+			}
+			commitID := args[0]
+			rp, err := repo.FindRepoRoot(".")
+			if err != nil {
+				return err
+			}
+			str, err := streams.CurrentStream(rp)
+			if err != nil {
+				return err
+			}
+			newC, err := commits.RevertCommit(rp, str, commitID)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Created revert commit %s for %s in stream %s\n", newC, commitID, str)
+			return nil
+		},
+	}
+	rootCmd.AddCommand(revertCmd)
 }
