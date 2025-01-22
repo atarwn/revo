@@ -4,18 +4,33 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
 
 // This function was removed or renamed. Reintroduce it:
 func hashFile(path string) (string, error) {
-    data, err := os.ReadFile(path)
-    if err != nil {
-        return "", err
-    }
-    sum := sha256.Sum256(data)
-    return hex.EncodeToString(sum[:]), nil
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	buf := make([]byte, 64*1024) // 64kb chunks
+	for {
+		n, err := f.Read(buf)
+		if err != nil && err != io.EOF {
+			return "", err
+		}
+		if n == 0 {
+			break
+		}
+		h.Write(buf[:n])
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // handleLargeFiles checks the changed files, ...
