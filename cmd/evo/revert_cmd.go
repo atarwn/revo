@@ -29,9 +29,9 @@ func init() {
 			}
 			newC, err := commits.RevertCommit(rp, str, commitID)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to revert commit: %w", err)
 			}
-			fmt.Printf("Created revert commit %s for %s in stream %s\n", newC, commitID, str)
+			fmt.Printf("Created revert commit %s\n", newC.ID)
 			return nil
 		},
 	}

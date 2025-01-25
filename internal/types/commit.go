@@ -12,17 +12,16 @@ type ExtendedOp struct {
 	OldContent string         `json:"oldContent,omitempty"`
 }
 
-// Commit represents a set of operations with metadata
+// Commit represents a commit in the repository
 type Commit struct {
-	ID          string    `json:"id"`
-	Stream      string    `json:"stream"`
-	Message     string    `json:"message"`
-	AuthorName  string    `json:"authorName"`
-	AuthorEmail string    `json:"authorEmail"`
-	Timestamp   time.Time `json:"timestamp"`
-	Signature   string    `json:"signature,omitempty"`
-
-	Ops []ExtendedOp `json:"ops"`
+	ID          string       // Unique identifier
+	Stream      string       // Stream name
+	Message     string       // Commit message
+	AuthorName  string       // Author's name
+	AuthorEmail string       // Author's email
+	Timestamp   time.Time    // When the commit was created
+	Operations  []ExtendedOp // Operations included in this commit
+	Signature   string       // Optional Ed25519 signature
 }
 
 // CommitHashString generates a stable string representation of a commit for signing

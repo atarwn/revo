@@ -38,7 +38,10 @@ func init() {
 			for _, c := range cc {
 				ver := ""
 				if c.Signature != "" && doVerify {
-					if signing.VerifyCommit(&c) {
+					valid, err := signing.VerifyCommit(&c, rp)
+					if err != nil {
+						ver = " (error: " + err.Error() + ")"
+					} else if valid {
 						ver = " (verified)"
 					} else {
 						ver = " (INVALID!)"

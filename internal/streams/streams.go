@@ -86,7 +86,7 @@ func MergeStreams(repoPath, source, target string) error {
 	}
 	for _, mc := range missing {
 		// replicate each op into .evo/ops/<target>/<fileID>.bin
-		if err := replicateOps(repoPath, target, mc.Ops); err != nil {
+		if err := replicateOps(repoPath, target, mc.Operations); err != nil {
 			return err
 		}
 		// store a commit copy in target
@@ -131,7 +131,7 @@ OUTER:
 		return fmt.Errorf("commit %s not found in any stream", commitID)
 	}
 	// replicate ops
-	if err := replicateOps(repoPath, target, found.Ops); err != nil {
+	if err := replicateOps(repoPath, target, found.Operations); err != nil {
 		return err
 	}
 	// store new commit with new ID

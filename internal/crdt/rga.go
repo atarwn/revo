@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+
 	"github.com/google/uuid"
 )
 
@@ -45,11 +46,30 @@ func (r *RGA) Apply(op Operation) error {
 
 	switch op.Type {
 	case OpInsert:
-		r.ops = append(r.ops, rgaOp)
+		// Filter out any previous operations for this LineID
+		newOps := make([]RGAOperation, 0)
+		for _, existingOp := range r.ops {
+			if existingOp.LineID != op.LineID {
+				newOps = append(newOps, existingOp)
+			}
+		}
+		r.ops = append(newOps, rgaOp)
+		// Clear tombstone status
+		delete(r.tombstone, op.LineID.String())
 		sort.Slice(r.ops, func(i, j int) bool {
 			return r.ops[i].LessThan(&r.ops[j].Operation)
 		})
 	case OpDelete:
+		// Get content before marking as deleted
+		var content string
+		for _, op := range r.ops {
+			if op.LineID == rgaOp.LineID && !r.tombstone[op.LineID.String()] {
+				content = op.Content
+				break
+			}
+		}
+		rgaOp.Content = content // Store content in the delete operation
+		r.ops = append(r.ops, rgaOp)
 		r.tombstone[op.LineID.String()] = true
 	case OpUpdate:
 		found := false

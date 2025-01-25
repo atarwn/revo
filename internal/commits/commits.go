@@ -22,34 +22,89 @@ import (
 // ExtendedOp includes oldContent for update ops
 type ExtendedOp = types.ExtendedOp
 
-// CreateCommit => gather new ops, sign if requested
-func CreateCommit(repoPath, stream, msg, name, email string, sign bool) (*types.Commit, error) {
-	cid := uuid.New().String()
-	c := &types.Commit{
-		ID:          cid,
+// CreateCommit creates a new commit with the given operations
+func CreateCommit(repoPath, stream, message, authorName, authorEmail string, ops []types.ExtendedOp, sign bool) (*types.Commit, error) {
+	commit := &types.Commit{
+		ID:          uuid.New().String(),
 		Stream:      stream,
-		Message:     msg,
-		AuthorName:  name,
-		AuthorEmail: email,
-		Timestamp:   time.Now(),
+		Message:     message,
+		AuthorName:  authorName,
+		AuthorEmail: authorEmail,
+		Timestamp:   time.Now().UTC(),
+		Operations:  ops,
 	}
-	newOps, err := gatherNewOps(repoPath, stream)
-	if err != nil {
-		return nil, err
-	}
-	c.Ops = newOps
 
+	// Sign commit if requested
 	if sign {
-		sig, err := signing.SignCommit(c)
+		sig, err := signing.SignCommit(commit, repoPath)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to sign commit: %w", err)
 		}
-		c.Signature = sig
+		commit.Signature = sig
+
+		// Verify signature immediately
+		valid, err := signing.VerifyCommit(commit, repoPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify commit signature: %w", err)
+		}
+		if !valid {
+			return nil, fmt.Errorf("commit signature verification failed")
+		}
 	}
-	if err := saveCommit(repoPath, c); err != nil {
-		return nil, err
+
+	// Save commit
+	if err := SaveCommit(repoPath, commit); err != nil {
+		return nil, fmt.Errorf("failed to save commit: %w", err)
 	}
-	return c, nil
+
+	return commit, nil
+}
+
+// LoadCommit loads a commit from disk
+func LoadCommit(repoPath, stream, commitID string) (*types.Commit, error) {
+	commitPath := filepath.Join(repoPath, ".evo", "commits", stream, commitID+".bin")
+	data, err := os.ReadFile(commitPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read commit file: %w", err)
+	}
+
+	var commit types.Commit
+	if err := json.Unmarshal(data, &commit); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal commit: %w", err)
+	}
+
+	// Verify signature if present
+	if commit.Signature != "" {
+		valid, err := signing.VerifyCommit(&commit, repoPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify commit signature: %w", err)
+		}
+		if !valid {
+			return nil, fmt.Errorf("commit signature verification failed")
+		}
+	}
+
+	return &commit, nil
+}
+
+// SaveCommit saves a commit to disk
+func SaveCommit(repoPath string, commit *types.Commit) error {
+	commitDir := filepath.Join(repoPath, ".evo", "commits", commit.Stream)
+	if err := os.MkdirAll(commitDir, 0755); err != nil {
+		return fmt.Errorf("failed to create commit directory: %w", err)
+	}
+
+	data, err := json.Marshal(commit)
+	if err != nil {
+		return fmt.Errorf("failed to marshal commit: %w", err)
+	}
+
+	commitPath := filepath.Join(commitDir, commit.ID+".bin")
+	if err := os.WriteFile(commitPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write commit file: %w", err)
+	}
+
+	return nil
 }
 
 // gatherNewOps => find ops not in prior commits, augment 'update' ops with oldContent
@@ -60,7 +115,7 @@ func gatherNewOps(repoPath, stream string) ([]ExtendedOp, error) {
 	}
 	known := make(map[string]bool)
 	for _, cc := range all {
-		for _, eop := range cc.Ops {
+		for _, eop := range cc.Operations {
 			known[opKey(eop.Op)] = true
 		}
 	}
@@ -159,29 +214,34 @@ func findOldContent(ds map[uuid.UUID]map[uuid.UUID]string, lineID uuid.UUID) str
 	return ""
 }
 
-// ListCommits => load from .evo/commits/<stream>/
+// ListCommits returns all commits in a stream, sorted by timestamp
 func ListCommits(repoPath, stream string) ([]types.Commit, error) {
-	dir := filepath.Join(repoPath, ".evo", "commits", stream)
-	entries, err := os.ReadDir(dir)
-	if os.IsNotExist(err) {
-		return []types.Commit{}, nil
-	}
+	commitDir := filepath.Join(repoPath, ".evo", "commits", stream)
+	entries, err := os.ReadDir(commitDir)
 	if err != nil {
-		return nil, err
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read commit directory: %w", err)
 	}
-	var out []types.Commit
-	for _, e := range entries {
-		if !e.IsDir() && filepath.Ext(e.Name()) == ".bin" {
-			c, er := loadCommit(filepath.Join(dir, e.Name()))
-			if er == nil {
-				out = append(out, *c)
+
+	var commits []types.Commit
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".bin") {
+			commit, err := LoadCommit(repoPath, stream, strings.TrimSuffix(entry.Name(), ".bin"))
+			if err != nil {
+				return nil, fmt.Errorf("failed to load commit %s: %w", entry.Name(), err)
 			}
+			commits = append(commits, *commit)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].Timestamp.Before(out[j].Timestamp)
+
+	// Sort by timestamp
+	sort.Slice(commits, func(i, j int) bool {
+		return commits[i].Timestamp.Before(commits[j].Timestamp)
 	})
-	return out, nil
+
+	return commits, nil
 }
 
 func saveCommit(repoPath string, c *types.Commit) error {
@@ -243,80 +303,88 @@ func loadCommit(fp string) (*types.Commit, error) {
 	return &c, nil
 }
 
-// RevertCommit => invert each op, store in a new commit
-func RevertCommit(repoPath, stream, commitID string) (string, error) {
-	all, err := ListCommits(repoPath, stream)
+// RevertCommit creates a new commit that reverts the changes in the specified commit
+func RevertCommit(repoPath, stream, commitID string) (*types.Commit, error) {
+	target, err := LoadCommit(repoPath, stream, commitID)
 	if err != nil {
-		return "", err
+		return nil, fmt.Errorf("failed to load commit %s: %w", commitID, err)
 	}
-	var target *types.Commit
-	for _, c := range all {
-		if c.ID == commitID {
-			target = &c
-			break
-		}
+
+	// Generate inverse operations
+	inverted, err := invertOps(target.Operations)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invert operations: %w", err)
 	}
-	if target == nil {
-		return "", fmt.Errorf("commit %s not found in stream %s", commitID, stream)
-	}
-	newID := uuid.New().String()
-	now := time.Now()
-	invOps := invertOps(target.Ops)
-	rcommit := &types.Commit{
-		ID:          newID,
+
+	// Create revert commit
+	revert := &types.Commit{
+		ID:          uuid.New().String(),
 		Stream:      stream,
-		Message:     "Revert of " + commitID + ": " + target.Message,
-		AuthorName:  "Reverter",
-		AuthorEmail: "revert@evo",
-		Timestamp:   now,
-		Ops:         invOps,
+		Message:     fmt.Sprintf("Revert commit %s", commitID),
+		AuthorName:  target.AuthorName,
+		AuthorEmail: target.AuthorEmail,
+		Timestamp:   time.Now().UTC(),
+		Operations:  inverted,
 	}
-	// apply these ops to the .evo/ops
-	if err := applyOps(repoPath, stream, invOps); err != nil {
-		return "", err
+
+	// Save revert commit
+	if err := SaveCommit(repoPath, revert); err != nil {
+		return nil, fmt.Errorf("failed to save revert commit: %w", err)
 	}
-	if err := saveCommit(repoPath, rcommit); err != nil {
-		return "", err
-	}
-	return newID, nil
+
+	return revert, nil
 }
 
-func invertOps(eops []ExtendedOp) []ExtendedOp {
-	var out []ExtendedOp
-	for _, eop := range eops {
-		op := eop.Op
-		switch op.Type {
+// invertOps generates inverse operations for a commit
+func invertOps(ops []types.ExtendedOp) ([]types.ExtendedOp, error) {
+	var inverted []types.ExtendedOp
+
+	// Process operations in reverse order
+	for i := len(ops) - 1; i >= 0; i-- {
+		op := ops[i]
+		switch op.Op.Type {
 		case crdt.OpInsert:
-			// revert => delete
-			out = append(out, ExtendedOp{
+			// Invert insert -> delete
+			inverted = append(inverted, types.ExtendedOp{
 				Op: crdt.Operation{
-					FileID:  op.FileID,
-					Type:    crdt.OpDelete,
-					Lamport: newLamport(),
-					NodeID:  uuid.New(),
-					LineID:  op.LineID,
+					Type:      crdt.OpDelete,
+					LineID:    op.Op.LineID,
+					Timestamp: time.Now(),
 				},
 			})
+
 		case crdt.OpDelete:
-			// revert => insert with old content if we had it.
-			// But in a real system we'd store the old content of the line.
-			// We'll skip if we don't have it.
-		case crdt.OpUpdate:
-			// revert => update with OldContent
-			out = append(out, ExtendedOp{
+			// Invert delete -> insert with original content
+			if op.Op.Content == "" {
+				return nil, fmt.Errorf("cannot revert delete operation: missing original content")
+			}
+			inverted = append(inverted, types.ExtendedOp{
 				Op: crdt.Operation{
-					FileID:  op.FileID,
-					Type:    crdt.OpUpdate,
-					Lamport: newLamport(),
-					NodeID:  uuid.New(),
-					LineID:  op.LineID,
-					Content: eop.OldContent,
+					Type:      crdt.OpInsert,
+					LineID:    op.Op.LineID,
+					Content:   op.Op.Content,
+					Timestamp: time.Now(),
 				},
-				OldContent: op.Content,
+			})
+
+		case crdt.OpUpdate:
+			// Invert update -> update with old content
+			if op.OldContent == "" {
+				return nil, fmt.Errorf("cannot revert update operation: missing old content")
+			}
+			inverted = append(inverted, types.ExtendedOp{
+				Op: crdt.Operation{
+					Type:      crdt.OpUpdate,
+					LineID:    op.Op.LineID,
+					Content:   op.OldContent,
+					Timestamp: time.Now(),
+				},
+				OldContent: op.Op.Content,
 			})
 		}
 	}
-	return out
+
+	return inverted, nil
 }
 
 func newLamport() uint64 {
@@ -349,7 +417,7 @@ func CommitHashString(c *types.Commit) string {
 	h.Write([]byte(c.AuthorName))
 	h.Write([]byte(c.AuthorEmail))
 	h.Write([]byte(c.Timestamp.String()))
-	for _, eop := range c.Ops {
+	for _, eop := range c.Operations {
 		// incorporate lamport, node, lineID, content, oldContent
 		h.Write([]byte(fmt.Sprintf("%d_%s_%s_%s_old=%s",
 			eop.Op.Lamport, eop.Op.NodeID, eop.Op.LineID, eop.Op.Content, eop.OldContent)))

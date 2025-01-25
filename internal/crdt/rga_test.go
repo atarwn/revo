@@ -250,4 +250,137 @@ func TestRGA(t *testing.T) {
 			t.Errorf("Expected 0 operations after clear, got %d", len(ops))
 		}
 	})
+
+	t.Run("Delete Content Preservation", func(t *testing.T) {
+		rga := NewRGA()
+		fileID := uuid.New()
+		lineID := uuid.New()
+		nodeID := uuid.New()
+		content := "test content to preserve"
+
+		// Insert operation
+		insertOp := Operation{
+			Type:      OpInsert,
+			Lamport:   1,
+			NodeID:    nodeID,
+			FileID:    fileID,
+			LineID:    lineID,
+			Content:   content,
+			Stream:    "stream1",
+			Timestamp: time.Now(),
+			Vector:    []int64{1},
+		}
+
+		// Apply insert
+		err := rga.Apply(insertOp)
+		if err != nil {
+			t.Errorf("Failed to apply insert operation: %v", err)
+		}
+
+		// Delete operation
+		deleteOp := Operation{
+			Type:      OpDelete,
+			Lamport:   2,
+			NodeID:    nodeID,
+			FileID:    fileID,
+			LineID:    lineID,
+			Stream:    "stream1",
+			Timestamp: time.Now().Add(time.Second),
+			Vector:    []int64{2},
+		}
+
+		// Apply delete
+		err = rga.Apply(deleteOp)
+		if err != nil {
+			t.Errorf("Failed to apply delete operation: %v", err)
+		}
+
+		// Get all operations
+		ops := rga.GetOperations()
+		var foundDelete bool
+		for _, op := range ops {
+			if op.Type == OpDelete && op.LineID == lineID {
+				foundDelete = true
+				if op.Content != content {
+					t.Errorf("Delete operation did not preserve content, expected %q, got %q", content, op.Content)
+				}
+				break
+			}
+		}
+		if !foundDelete {
+			t.Error("Delete operation not found in operations list")
+		}
+	})
+
+	t.Run("Delete and Reinsert", func(t *testing.T) {
+		rga := NewRGA()
+		fileID := uuid.New()
+		lineID := uuid.New()
+		nodeID := uuid.New()
+		content := "test content for reinsert"
+
+		// Insert operation
+		insertOp := Operation{
+			Type:      OpInsert,
+			Lamport:   1,
+			NodeID:    nodeID,
+			FileID:    fileID,
+			LineID:    lineID,
+			Content:   content,
+			Stream:    "stream1",
+			Timestamp: time.Now(),
+			Vector:    []int64{1},
+		}
+
+		// Apply insert
+		err := rga.Apply(insertOp)
+		if err != nil {
+			t.Errorf("Failed to apply insert operation: %v", err)
+		}
+
+		// Delete operation
+		deleteOp := Operation{
+			Type:      OpDelete,
+			Lamport:   2,
+			NodeID:    nodeID,
+			FileID:    fileID,
+			LineID:    lineID,
+			Stream:    "stream1",
+			Timestamp: time.Now().Add(time.Second),
+			Vector:    []int64{2},
+		}
+
+		// Apply delete
+		err = rga.Apply(deleteOp)
+		if err != nil {
+			t.Errorf("Failed to apply delete operation: %v", err)
+		}
+
+		// Reinsert operation (simulating revert)
+		reinsertOp := Operation{
+			Type:      OpInsert,
+			Lamport:   3,
+			NodeID:    nodeID,
+			FileID:    fileID,
+			LineID:    lineID,
+			Content:   content,
+			Stream:    "stream1",
+			Timestamp: time.Now().Add(2 * time.Second),
+			Vector:    []int64{3},
+		}
+
+		// Apply reinsert
+		err = rga.Apply(reinsertOp)
+		if err != nil {
+			t.Errorf("Failed to apply reinsert operation: %v", err)
+		}
+
+		// Verify content is restored
+		values := rga.Get()
+		if len(values) != 1 {
+			t.Errorf("Expected 1 value after reinsert, got %d", len(values))
+		} else if values[0] != content {
+			t.Errorf("Content mismatch after reinsert, expected %q, got %q", content, values[0])
+		}
+	})
 }

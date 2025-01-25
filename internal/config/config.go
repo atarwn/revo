@@ -1,7 +1,7 @@
 package config
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -71,32 +71,65 @@ func SetRepoConfigValue(repoPath, key, val string) error {
 	return saveToml(tree, rp)
 }
 
-// GetConfigValue => repo-level override, else global
+// GetConfigValue retrieves a value from the config file
 func GetConfigValue(repoPath, key string) (string, error) {
-	// if repoPath is empty or invalid => fallback to global
-	var repoTree *toml.Tree
-	if repoPath != "" {
-		rp := repoConfigPath(repoPath)
-		rt, err := loadToml(rp)
-		if err == nil {
-			repoTree = rt
-		}
-	}
-	globalTree := (*toml.Tree)(nil)
-	gp, err := globalConfigPath()
-	if err == nil {
-		globalTree, _ = loadToml(gp)
+	config, err := loadConfig(repoPath)
+	if err != nil {
+		return "", err
 	}
 
-	if repoTree != nil {
-		if v := repoTree.Get(key); v != nil {
-			return fmt.Sprintf("%v", v), nil
-		}
+	value, ok := config[key]
+	if !ok {
+		return "", fmt.Errorf("no config value for %s", key)
 	}
-	if globalTree != nil {
-		if v := globalTree.Get(key); v != nil {
-			return fmt.Sprintf("%v", v), nil
-		}
+
+	return value, nil
+}
+
+// SetConfigValue stores a value in the config file
+func SetConfigValue(repoPath, key, value string) error {
+	config, err := loadConfig(repoPath)
+	if err != nil {
+		// If config doesn't exist, create new map
+		config = make(map[string]string)
 	}
-	return "", errors.New("no config value for " + key)
+
+	config[key] = value
+
+	// Ensure .evo directory exists
+	configDir := filepath.Join(repoPath, ".evo")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	// Write updated config
+	configPath := filepath.Join(configDir, "config.json")
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	return nil
+}
+
+func loadConfig(repoPath string) (map[string]string, error) {
+	configPath := filepath.Join(repoPath, ".evo", "config.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("no config value for signing.keyPath")
+		}
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	var config map[string]string
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	return config, nil
 }

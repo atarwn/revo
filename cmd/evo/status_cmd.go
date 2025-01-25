@@ -1,10 +1,8 @@
 package main
 
 import (
-	"evo/internal/index"
-	"evo/internal/ops"
 	"evo/internal/repo"
-	"evo/internal/streams"
+	"evo/internal/status"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -13,34 +11,25 @@ import (
 func init() {
 	var statusCmd = &cobra.Command{
 		Use:   "status",
-		Short: "Detect changes and update CRDT logs in the current stream",
-		Long: `Scans the working directory, updates .evo/index for new or renamed files,
-and appends line-based CRDT ops for any changed files to the current stream.`,
+		Short: "Show the working tree status",
+		Long: `Shows the status of files in the working directory:
+- New (untracked) files
+- Modified files
+- Deleted files
+- Renamed files
+Respects .evo-ignore patterns for excluding files.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rp, err := repo.FindRepoRoot(".")
 			if err != nil {
 				return err
 			}
-			stream, err := streams.CurrentStream(rp)
+
+			st, err := status.GetStatus(rp)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to get status: %w", err)
 			}
-			// update stable file IDs first
-			if err := index.UpdateIndex(rp); err != nil {
-				return err
-			}
-			changed, err := ops.IngestLocalChanges(rp, stream)
-			if err != nil {
-				return err
-			}
-			if len(changed) == 0 {
-				fmt.Println("No changes. Working directory is clean.")
-				return nil
-			}
-			fmt.Println("Changes recorded in CRDT logs for files:")
-			for _, c := range changed {
-				fmt.Println("  ", c)
-			}
+
+			fmt.Print(status.FormatStatus(st))
 			return nil
 		},
 	}

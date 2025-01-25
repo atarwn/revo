@@ -6,6 +6,7 @@ import (
 	"evo/internal/index"
 	"evo/internal/repo"
 	"evo/internal/streams"
+	"evo/internal/types"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -46,7 +47,7 @@ with a message and optional Ed25519 signature, if configured.`,
 			if email == "" {
 				email = "user@evo"
 			}
-			cid, err := commits.CreateCommit(rp, stream, commitMsg, name, email, commitSign)
+			cid, err := commits.CreateCommit(rp, stream, commitMsg, name, email, []types.ExtendedOp{}, commitSign)
 			if err != nil {
 				return err
 			}
