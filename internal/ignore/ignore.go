@@ -71,6 +71,14 @@ func (il *IgnoreList) IsIgnored(path string) bool {
 			continue
 		}
 
+		// For directory patterns ending with /**, try prefix matching first
+		if strings.HasSuffix(pattern, "/**") {
+			base := strings.TrimSuffix(pattern, "/**")
+			if path == base || strings.HasPrefix(path, base+"/") {
+				return true
+			}
+		}
+
 		// Try matching the pattern directly
 		matched, err := doublestar.Match(pattern, path)
 		if err == nil && matched {
@@ -85,7 +93,7 @@ func (il *IgnoreList) IsIgnored(path string) bool {
 			}
 		}
 
-		// For directory patterns, try matching with /** suffix
+		// For directory patterns without /**, try matching with /** suffix
 		if !strings.HasSuffix(pattern, "/**") {
 			// Try with /** suffix
 			matched, err := doublestar.Match(pattern+"/**", path)
