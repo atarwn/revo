@@ -1,6 +1,8 @@
 # Evo 🌿
 
-> **Note**: This is my hobby project in active development! While the core concepts are working, some features are still experimental and under construction. If you like the vision, contributions and feedback are very welcome! 🚧
+> **IMPORTANT**: This project has been discontinued. Due to persistent harassment and hostile behavior from certain members of the community, I have made the difficult decision to cease development of this project. While I'm proud of what was built and the vision it represented, I cannot continue maintaining it under these circumstances. The repository will remain archived for reference, but will no longer receive updates or support. Thank you to those who supported this project constructively.
+
+> ~~**Note**: This is my hobby project in active development! While the core concepts are working, some features are still experimental and under construction. If you like the vision, contributions and feedback are very welcome! 🚧~~
 
 Next-Generation, CRDT-Based Version Control
 No Merge Conflicts • Named Streams • Stable File IDs • Large File Support
@@ -22,16 +24,18 @@ Evo 🌿 aims to evolve version control by abandoning outdated branch merges and
 6. **Commit Signing**
    Optional Ed25519 signing for users who need authenticity checks.
 
-## Work in Progress 🌿
+## ~~Work in Progress~~ Project Status 🌿
 
-While Evo's core is functional, there's active development on:
+~~While Evo's core is functional, there's active development on:
 - Advanced partial merges for even more granular change selection
 - Extended tests (unit/integration/E2E)
 - Server-based PR flows for code reviews
 - Performance (packfiles, caching)
-- CLI & UI polish
+- CLI & UI polish~~
 
-Your feedback and contributions can help shape Evo's future!
+This project has been discontinued and is no longer under development. The code remains as-is for reference purposes, but no further updates or improvements will be made.
+
+~~Your feedback and contributions can help shape Evo's future!~~
 
 ## Vision 🌿
 
@@ -77,13 +81,7 @@ evo stream merge feature-x main
 
 ## Contributing 💪
 
-Your help in making Evo better would be amazing! Check out [DESIGN.md](DESIGN.md) for insights on architecture and upcoming tasks. Whether it's code, ideas, or bug reports - all contributions are welcome!
-
-Feel free to:
-- Open issues for bugs or feature requests
-- Submit pull requests for improvements
-- Share your thoughts and experiences
-- Star the project if you like the vision!
+This project is no longer accepting contributions as it has been discontinued. The repository is archived for reference purposes only.
 
 ## License 📜
 
