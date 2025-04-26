@@ -1,7 +1,9 @@
 # Evo 🌿
 
 > [!NOTE]
-> Sad to realize that a good idea was buried because of cyberbullying. I will look into the current state of the project, and if this is indeed a possible **revo**lution, I will continue to support and develop it.
+> Sad to realize that a good idea was buried because of cyberbullying. I will look into the current state of the project, ~~and if this is indeed a possible **revo**lution~~, I will continue to support and develop it.
+>
+> I don't pretend to create something super-cool, but I just want to make something I'd like to use anyway. I might have to redo the project from scratch, I might get cyberbullied too. But I want what I want.
 > 
 > Why? I've always been dissatisfied with existing solutions: Git, Mercurial and others were the best in their time, but it's time to move on and create new concepts.
 >
