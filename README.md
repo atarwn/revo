@@ -1,6 +1,14 @@
 # Evo 🌿
 
-> **IMPORTANT**: This project has been discontinued. Due to persistent harassment and hostile behavior from certain members of the community, I have made the difficult decision to cease development of this project. While I'm proud of what was built and the vision it represented, I cannot continue maintaining it under these circumstances. The repository will remain archived for reference, but will no longer receive updates or support. Thank you to those who supported this project constructively.
+> [!NOTE]
+> Sad to realize that a good idea was buried because of cyberbullying. I will look into the current state of the project, and if this is indeed a possible **revo**lution, I will continue to support and develop it.
+> 
+> Why? I've always been dissatisfied with existing solutions: Git, Mercurial and others were the best in their time, but it's time to move on and create new concepts.
+>
+> <p align="right"><i>atarwn</i></p>
+
+> [!IMPORTANT]
+> This project has been discontinued. Due to persistent harassment and hostile behavior from certain members of the community, I have made the difficult decision to cease development of this project. While I'm proud of what was built and the vision it represented, I cannot continue maintaining it under these circumstances. The repository will remain archived for reference, but will no longer receive updates or support. Thank you to those who supported this project constructively.
 
 > ~~**Note**: This is my hobby project in active development! While the core concepts are working, some features are still experimental and under construction. If you like the vision, contributions and feedback are very welcome! 🚧~~
 
